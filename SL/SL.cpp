@@ -109,15 +109,39 @@ void SendLedCommand(HANDLE h, char value)
     }
 }
 
-void ToggleThread(HANDLE h, std::atomic_bool* pToggleActive, int durationSec)
+void ToggleThread(HANDLE h, std::atomic_bool* pToggleActive, int durationSec, int loopCount)
 {
     bool state = false;
-    while (pToggleActive->load()) {
+    int count = 0;
+    while (pToggleActive->load() && (loopCount <= 0 || count < loopCount)) {
+        count++;
+        if (loopCount > 0) {
+            printf("[Loop %d/%d] ", count, loopCount);
+        } else {
+            printf("[Loop %d] ", count);
+        }
         SendLedCommand(h, state ? '1' : '0');
         state = !state;
         std::this_thread::sleep_for(std::chrono::seconds(durationSec));
     }
-    printf("Toggle thread stopped\n");
+    printf("Toggle thread stopped (%d toggles)\n", count);
+}
+
+void PrintHelp()
+{
+    printf("\nAvailable Commands:\n");
+    printf("  help, ?              - Print this help message\n");
+    printf("  led on, ledon        - Send LED ON (character '1')\n");
+    printf("  led off, ledoff      - Send LED OFF (character '0')\n");
+    printf("  toggle on, toggleon  - Start alternating LED on/off\n");
+    printf("  toggle off, toggleoff- Stop alternating LED\n");
+    printf("  exit, quit           - Exit the program\n");
+    printf("\nCommand Line Arguments:\n");
+    printf("  Usage: SL.exe [port] [baud] [duration] [loops]\n");
+    printf("  port     - COM port name (default: COM3)\n");
+    printf("  baud     - Baud rate (default: 115200)\n");
+    printf("  duration - Toggle interval in seconds (default: 5)\n");
+    printf("  loops    - Number of toggle loops, 0=infinite (default: 0)\n\n");
 }
 
 int main(int argc, char** argv)
@@ -125,13 +149,15 @@ int main(int argc, char** argv)
     const char* port = (argc > 1) ? argv[1] : "COM3";
     DWORD baud = (argc > 2) ? (DWORD)atoi(argv[2]) : 115200;
     int toggleDuration = (argc > 3) ? atoi(argv[3]) : 5;
+    int toggleLoops = (argc > 4) ? atoi(argv[4]) : 0;
 
     printf("Opening %s at %lu baud...\n", port, (unsigned long)baud);
     printf("Toggle duration: %d seconds\n", toggleDuration);
+    printf("Toggle loops: %s\n", toggleLoops > 0 ? std::to_string(toggleLoops).c_str() : "infinite");
     HANDLE h = OpenSerialPort(port, baud);
     if (h == INVALID_HANDLE_VALUE) return 1;
 
-    printf("Starting background RX thread. Enter commands on console. Type 'exit' to quit.\n");
+    printf("Starting background RX thread. Enter commands on console. Type 'help' for commands, 'exit' to quit.\n");
 
     std::atomic_bool running(true);
     std::atomic_bool toggleActive(false);
@@ -172,10 +198,8 @@ int main(int argc, char** argv)
             const char* ack = "OK: exiting\r\n";
             WriteSerial(h, ack, (DWORD)strlen(ack));
             break;
-        } else if (cmd == "ping") {
-            const char* resp = "pong\r\n";
-            WriteSerial(h, resp, (DWORD)strlen(resp));
-            printf("%s", resp);
+        } else if (cmd == "help" || cmd == "?") {
+            PrintHelp();
         } else if (cmd == "led on" || cmd == "ledon") {
             SendLedCommand(h, '1');
         } else if (cmd == "led off" || cmd == "ledoff") {
@@ -183,8 +207,9 @@ int main(int argc, char** argv)
         } else if (cmd == "toggle on" || cmd == "toggleon") {
             if (!toggleActive.load()) {
                 toggleActive.store(true);
-                toggleThread = std::thread(ToggleThread, h, &toggleActive, toggleDuration);
-                printf("Toggle started (alternating 1/0 every %d seconds)\n", toggleDuration);
+                toggleThread = std::thread(ToggleThread, h, &toggleActive, toggleDuration, toggleLoops);
+                printf("Toggle started (alternating 1/0 every %d seconds for %s)\n", 
+                    toggleDuration, toggleLoops > 0 ? std::to_string(toggleLoops).c_str() : "infinite loops");
             } else {
                 printf("Toggle already running\n");
             }
