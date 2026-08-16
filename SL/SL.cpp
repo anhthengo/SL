@@ -127,6 +127,23 @@ void ToggleThread(HANDLE h, std::atomic_bool* pToggleActive, int durationSec, in
     printf("Toggle thread stopped (%d toggles)\n", count);
 }
 
+void PrintHelp()
+{
+    printf("\nAvailable Commands:\n");
+    printf("  help, ?              - Print this help message\n");
+    printf("  led on, ledon        - Send LED ON (character '1')\n");
+    printf("  led off, ledoff      - Send LED OFF (character '0')\n");
+    printf("  toggle on, toggleon  - Start alternating LED on/off\n");
+    printf("  toggle off, toggleoff- Stop alternating LED\n");
+    printf("  exit, quit           - Exit the program\n");
+    printf("\nCommand Line Arguments:\n");
+    printf("  Usage: SL.exe [port] [baud] [duration] [loops]\n");
+    printf("  port     - COM port name (default: COM3)\n");
+    printf("  baud     - Baud rate (default: 115200)\n");
+    printf("  duration - Toggle interval in seconds (default: 5)\n");
+    printf("  loops    - Number of toggle loops, 0=infinite (default: 0)\n\n");
+}
+
 int main(int argc, char** argv)
 {
     const char* port = (argc > 1) ? argv[1] : "COM3";
@@ -140,7 +157,7 @@ int main(int argc, char** argv)
     HANDLE h = OpenSerialPort(port, baud);
     if (h == INVALID_HANDLE_VALUE) return 1;
 
-    printf("Starting background RX thread. Enter commands on console. Type 'exit' to quit.\n");
+    printf("Starting background RX thread. Enter commands on console. Type 'help' for commands, 'exit' to quit.\n");
 
     std::atomic_bool running(true);
     std::atomic_bool toggleActive(false);
@@ -181,10 +198,8 @@ int main(int argc, char** argv)
             const char* ack = "OK: exiting\r\n";
             WriteSerial(h, ack, (DWORD)strlen(ack));
             break;
-        } else if (cmd == "ping") {
-            const char* resp = "pong\r\n";
-            WriteSerial(h, resp, (DWORD)strlen(resp));
-            printf("%s", resp);
+        } else if (cmd == "help" || cmd == "?") {
+            PrintHelp();
         } else if (cmd == "led on" || cmd == "ledon") {
             SendLedCommand(h, '1');
         } else if (cmd == "led off" || cmd == "ledoff") {
