@@ -109,15 +109,22 @@ void SendLedCommand(HANDLE h, char value)
     }
 }
 
-void ToggleThread(HANDLE h, std::atomic_bool* pToggleActive, int durationSec)
+void ToggleThread(HANDLE h, std::atomic_bool* pToggleActive, int durationSec, int loopCount)
 {
     bool state = false;
-    while (pToggleActive->load()) {
+    int count = 0;
+    while (pToggleActive->load() && (loopCount <= 0 || count < loopCount)) {
+        count++;
+        if (loopCount > 0) {
+            printf("[Loop %d/%d] ", count, loopCount);
+        } else {
+            printf("[Loop %d] ", count);
+        }
         SendLedCommand(h, state ? '1' : '0');
         state = !state;
         std::this_thread::sleep_for(std::chrono::seconds(durationSec));
     }
-    printf("Toggle thread stopped\n");
+    printf("Toggle thread stopped (%d toggles)\n", count);
 }
 
 int main(int argc, char** argv)
@@ -125,9 +132,11 @@ int main(int argc, char** argv)
     const char* port = (argc > 1) ? argv[1] : "COM3";
     DWORD baud = (argc > 2) ? (DWORD)atoi(argv[2]) : 115200;
     int toggleDuration = (argc > 3) ? atoi(argv[3]) : 5;
+    int toggleLoops = (argc > 4) ? atoi(argv[4]) : 0;
 
     printf("Opening %s at %lu baud...\n", port, (unsigned long)baud);
     printf("Toggle duration: %d seconds\n", toggleDuration);
+    printf("Toggle loops: %s\n", toggleLoops > 0 ? std::to_string(toggleLoops).c_str() : "infinite");
     HANDLE h = OpenSerialPort(port, baud);
     if (h == INVALID_HANDLE_VALUE) return 1;
 
@@ -183,8 +192,9 @@ int main(int argc, char** argv)
         } else if (cmd == "toggle on" || cmd == "toggleon") {
             if (!toggleActive.load()) {
                 toggleActive.store(true);
-                toggleThread = std::thread(ToggleThread, h, &toggleActive, toggleDuration);
-                printf("Toggle started (alternating 1/0 every %d seconds)\n", toggleDuration);
+                toggleThread = std::thread(ToggleThread, h, &toggleActive, toggleDuration, toggleLoops);
+                printf("Toggle started (alternating 1/0 every %d seconds for %s)\n", 
+                    toggleDuration, toggleLoops > 0 ? std::to_string(toggleLoops).c_str() : "infinite loops");
             } else {
                 printf("Toggle already running\n");
             }
